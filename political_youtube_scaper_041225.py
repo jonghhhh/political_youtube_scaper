@@ -19,6 +19,8 @@ chrome_options = Options()
 chrome_options.add_argument("--headless")
 chrome_options.add_argument("--no-sandbox")
 chrome_options.add_argument("--disable-dev-shm-usage")
+# Chrome 바이너리 경로 지정 (Render 환경에 설치된 Chromium의 경로로 수정)
+chrome_options.binary_location = "/usr/bin/chromium-browser"
 
 # 처리할 YouTube 채널 목록
 channels = [
