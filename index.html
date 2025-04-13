@@ -118,7 +118,7 @@
     const channelVideos = {};
     let latestScrapeTime = "";
 
-    fetch('youtube_videos1.jsonl')
+    fetch('youtube_videos.jsonl')
       .then(response => response.text())
       .then(text => {
         const lines = text.trim().split('\n');
