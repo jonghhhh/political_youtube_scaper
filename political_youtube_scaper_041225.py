@@ -47,7 +47,7 @@ channels = [
 # 상수 정의
 MAX_VIDEOS_PER_CHANNEL = 5  # 채널당 최대 수집 비디오 수
 # 로컬 저장 파일 (스크래핑 후 GitHub 업데이트 대상)
-OUTPUT_FILE = "youtube_videos1.jsonl"
+OUTPUT_FILE = "youtube_videos.jsonl"
 
 
 def safe_read_jsonl_file(repo, file_path):
@@ -100,8 +100,8 @@ def update_github_jsonl(new_data):
         return False
 
     # 아래 repo_name과 file_path는 사용 환경에 맞게 수정하세요.
-    repo_name = "yourusername/yourrepo"  # 예: "jonghhhh/youtube_data"
-    file_path = "youtube_videos1.jsonl"
+    repo_name = "jonghhhh/political_youtube_scaper"  # 예: "jonghhhh/youtube_data"
+    file_path = "youtube_videos.jsonl"
 
     try:
         g = Github(github_token)
@@ -115,7 +115,7 @@ def update_github_jsonl(new_data):
             url = record.get("video_url", "")
             if url:
                 if (url not in deduped_records) or (
-                    record.get("scraping_time", "") > deduped_records[url].get("scraping_time", "")
+                    record.get("scraping_time", "") < deduped_records[url].get("scraping_time", "")
                 ):
                     deduped_records[url] = record
 
