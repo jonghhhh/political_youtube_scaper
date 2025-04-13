@@ -21,6 +21,11 @@ chrome_options.add_argument("--no-sandbox")
 chrome_options.add_argument("--disable-dev-shm-usage")
 chrome_options.add_argument("--disable-gpu")
 chrome_options.add_argument("--window-size=1920,1080")
+chrome_options.add_argument("--disable-extensions")
+chrome_options.add_argument("--disable-setuid-sandbox")
+chrome_options.add_argument("--lang=ko-KR")
+chrome_options.add_argument("--disable-web-security")
+chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 
 # Render.com에서는 특정 경로에 Chrome이 있을 수 있음
 # 여러 가능한 경로를 시도
@@ -126,6 +131,10 @@ def update_github_jsonl(new_data):
     file_path = "youtube_videos.jsonl"
 
     try:
+        # 서울 시간으로 커밋 메시지 생성
+        seoul_timezone = datetime.timezone(datetime.timedelta(hours=9))
+        seoul_time = datetime.datetime.now(seoul_timezone)
+        
         g = Github(github_token)
         repo = g.get_repo(repo_name)
         existing_data, sha = safe_read_jsonl_file(repo, file_path)
@@ -142,7 +151,7 @@ def update_github_jsonl(new_data):
                     deduped_records[url] = record
 
         jsonl_content = convert_to_jsonl(list(deduped_records.values()))
-        commit_message = f"Update videos data at {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        commit_message = f"Update videos data at {seoul_time.strftime('%Y-%m-%d %H:%M:%S')} KST"
         if sha:
             repo.update_file(file_path, commit_message, jsonl_content, sha)
         else:
@@ -177,8 +186,10 @@ def setup_webdriver():
 
 
 def main():
-    # 스크래핑 시작 시각 (년월일시분 형식)
-    scraping_time = datetime.datetime.now().strftime("%Y%m%d%H%M")
+    # 스크래핑 시작 시각 (서울 시간 기준, 년월일시분 형식)
+    seoul_timezone = datetime.timezone(datetime.timedelta(hours=9))  # UTC+9 (한국 시간)
+    scraping_time = datetime.datetime.now(seoul_timezone).strftime("%Y%m%d%H%M")
+    print(f"스크래핑 시작 시각 (서울): {datetime.datetime.now(seoul_timezone).strftime('%Y-%m-%d %H:%M:%S')}")
     new_videos_data = []
     
     print(f"Chrome 바이너리 경로: {chrome_binary or '찾지 못함'}")
@@ -187,29 +198,92 @@ def main():
         # 웹드라이버 설정
         driver = setup_webdriver()
         
+        # 모든 채널 처리
         for channel_info in channels:
             channel_name = channel_info["channel"]
             channel_url = channel_info["channel_url"]
             
             try:
-                print(f"{channel_name} 처리 중...")
-                driver.get(channel_url)
-                time.sleep(3)  # 페이지 로딩 대기 시간 증가
+                print(f"\n==== {channel_name} 처리 시작 ====")
+                # 채널별로 새 드라이버 세션 사용
+                driver.quit()
+                driver = setup_webdriver()
                 
-                # YouTube 페이지 렌더링 대기
-                for _ in range(3):  # 스크롤 3번 시도
-                    driver.execute_script("window.scrollBy(0, 500)")
+                # 페이지 로드
+                print(f"{channel_url} 로딩 중...")
+                driver.get(channel_url)
+                time.sleep(5)  # 로딩 대기 시간 증가
+                
+                # 페이지 로드 확인
+                page_title = driver.title
+                print(f"페이지 제목: {page_title}")
+                
+                # JavaScript 실행으로 페이지 완전 로드 확인
+                is_loaded = driver.execute_script("return document.readyState") == "complete"
+                print(f"페이지 로드 상태: {'완료' if is_loaded else '미완료'}")
+                
+                # YouTube 페이지 렌더링 대기 (더 많은 스크롤)
+                for i in range(5):
+                    driver.execute_script(f"window.scrollBy(0, {500 * (i+1)})")
                     time.sleep(1)
                 
-                videos = driver.find_elements(By.CSS_SELECTOR, "ytd-grid-video-renderer, ytd-rich-item-renderer")[:MAX_VIDEOS_PER_CHANNEL]
-                print(f"{len(videos)}개 비디오 발견")
+                # 여러 가능한 CSS 선택자 시도
+                selectors = [
+                    "ytd-grid-video-renderer, ytd-rich-item-renderer",
+                    "ytd-grid-video-renderer", 
+                    "ytd-rich-item-renderer",
+                    "#contents ytd-rich-item-renderer",
+                    "#contents > ytd-rich-item-renderer",
+                    "ytd-rich-grid-media"
+                ]
                 
-                for video in videos:
+                videos = []
+                for selector in selectors:
                     try:
-                        title_element = video.find_element(By.CSS_SELECTOR, "#video-title, #title-wrapper")
-                        title = title_element.text or title_element.get_attribute("title")
-                        link_element = video.find_element(By.CSS_SELECTOR, "a#thumbnail")
-                        video_url = link_element.get_attribute("href")
+                        elements = driver.find_elements(By.CSS_SELECTOR, selector)
+                        if elements:
+                            videos = elements[:MAX_VIDEOS_PER_CHANNEL]
+                            print(f"{selector} 선택자로 {len(videos)}개 비디오 발견")
+                            break
+                    except Exception as e:
+                        print(f"{selector} 선택자 시도 실패: {str(e)}")
+                
+                if not videos:
+                    print(f"주의: {channel_name}에서 비디오를 찾지 못했습니다!")
+                    # 전체 페이지 HTML 일부 출력 (디버깅용)
+                    page_source = driver.page_source[:500]
+                    print(f"페이지 소스 일부: {page_source}")
+                    continue
+                
+                for i, video in enumerate(videos):
+                    try:
+                        print(f"\n비디오 {i+1} 처리 중...")
+                        
+                        # 제목 찾기 (여러 선택자 시도)
+                        title = None
+                        title_selectors = ["#video-title", "#title-wrapper", "h3", "a[title]"]
+                        for title_selector in title_selectors:
+                            try:
+                                title_element = video.find_element(By.CSS_SELECTOR, title_selector)
+                                title = title_element.text or title_element.get_attribute("title")
+                                if title:
+                                    print(f"제목 찾음: {title[:50]}...")
+                                    break
+                            except:
+                                continue
+                        
+                        # URL 찾기 (여러 선택자 시도)
+                        video_url = None
+                        url_selectors = ["a#thumbnail", "a[href*='watch']", "a"]
+                        for url_selector in url_selectors:
+                            try:
+                                link_element = video.find_element(By.CSS_SELECTOR, url_selector)
+                                video_url = link_element.get_attribute("href")
+                                if video_url and "youtube.com/watch" in video_url:
+                                    print(f"URL 찾음: {video_url}")
+                                    break
+                            except:
+                                continue
                         
                         if title and video_url:
                             new_videos_data.append({
@@ -219,14 +293,19 @@ def main():
                                 "video_url": video_url,
                                 "scraping_time": scraping_time
                             })
-                            print(f"비디오 추가: {title[:30]}...")
+                            print(f"비디오 추가됨: {title[:30]}...")
+                        else:
+                            print(f"비디오 정보가 불완전함: 제목={bool(title)}, URL={bool(video_url)}")
                     except Exception as e:
                         print(f"비디오 파싱 오류: {str(e)}")
                         continue
                 
-                time.sleep(random.uniform(1, 2))
+                # 채널간 간격 늘림
+                time.sleep(random.uniform(2, 3))
+                print(f"==== {channel_name} 처리 완료 ====")
             except Exception as e:
                 print(f"{channel_name} 처리 중 오류 발생: {str(e)}")
+                traceback.print_exc()
                 continue
     except Exception as e:
         print(f"스크래핑 중 오류 발생: {str(e)}")
@@ -240,6 +319,10 @@ def main():
     print(f"총 {len(new_videos_data)}개 비디오 데이터 수집 완료")
     update_result = update_github_jsonl(new_videos_data)
     print(f"GitHub 업데이트 {'성공' if update_result else '실패'}")
+
+
+if __name__ == "__main__":
+    main()
 
 
 if __name__ == "__main__":
