@@ -1,0 +1,6 @@
+# Selenium 웹 드라이버 자동 관리를 위한 패키지
+selenium>=4.0.0
+webdriver-manager>=3.8.6
+
+# GitHub API 연동(Python용 PyGithub)
+PyGithub>=1.55
