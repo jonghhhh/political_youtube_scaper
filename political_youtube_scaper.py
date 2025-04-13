@@ -20,15 +20,9 @@ chrome_options.add_argument("--headless")
 chrome_options.add_argument("--no-sandbox")
 chrome_options.add_argument("--disable-dev-shm-usage")
 chrome_options.add_argument("--disable-gpu")
-chrome_options.add_argument("--window-size=1920,1080")
-chrome_options.add_argument("--disable-extensions")
-chrome_options.add_argument("--disable-setuid-sandbox")
-chrome_options.add_argument("--lang=ko-KR")
-chrome_options.add_argument("--disable-web-security")
 chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 
-# Render.com에서는 특정 경로에 Chrome이 있을 수 있음
-# 여러 가능한 경로를 시도
+# Render 환경의 Chrome 경로 자동 감지
 possible_chrome_paths = [
     "/usr/bin/chromium-browser",
     "/usr/bin/chromium",
@@ -37,15 +31,11 @@ possible_chrome_paths = [
 ]
 
 # 존재하는 Chrome 바이너리 찾기
-chrome_binary = None
 for path in possible_chrome_paths:
     if os.path.exists(path):
-        chrome_binary = path
+        chrome_options.binary_location = path
+        print(f"Chrome 바이너리 경로 설정: {path}")
         break
-
-# 바이너리 경로 설정 (발견된 경우에만)
-if chrome_binary:
-    chrome_options.binary_location = chrome_binary
 
 # 처리할 YouTube 채널 목록
 channels = [
@@ -73,7 +63,6 @@ channels = [
 
 # 상수 정의
 MAX_VIDEOS_PER_CHANNEL = 5  # 채널당 최대 수집 비디오 수
-# 로컬 저장 파일 (스크래핑 후 GitHub 업데이트 대상)
 OUTPUT_FILE = "youtube_videos.jsonl"
 
 
@@ -120,14 +109,16 @@ def update_github_jsonl(new_data):
     video_url이 중복되는 경우 scraping_time 기준 최신 데이터만 남기고 업데이트.
     """
     if not new_data:
+        print("새로운 데이터가 없습니다. GitHub 업데이트를 건너뜁니다.")
         return True
 
     github_token = os.environ.get("GITHUB_TOKEN")
     if not github_token:
+        print("GITHUB_TOKEN 환경 변수가 설정되지 않았습니다.")
         return False
 
     # 아래 repo_name과 file_path는 사용 환경에 맞게 수정하세요.
-    repo_name = "jonghhhh/political_youtube_scaper"  # 예: "jonghhhh/youtube_data"
+    repo_name = "jonghhhh/political_youtube_scaper"
     file_path = "youtube_videos.jsonl"
 
     try:
@@ -146,7 +137,7 @@ def update_github_jsonl(new_data):
             url = record.get("video_url", "")
             if url:
                 if (url not in deduped_records) or (
-                    record.get("scraping_time", "") < deduped_records[url].get("scraping_time", "")
+                    record.get("scraping_time", "") > deduped_records[url].get("scraping_time", "")
                 ):
                     deduped_records[url] = record
 
@@ -156,6 +147,7 @@ def update_github_jsonl(new_data):
             repo.update_file(file_path, commit_message, jsonl_content, sha)
         else:
             repo.create_file(file_path, commit_message, jsonl_content)
+        print(f"GitHub 업데이트 완료: {len(new_data)} 항목 추가")
         return True
     except Exception as e:
         print(f"GitHub 업데이트 실패: {str(e)}")
@@ -163,129 +155,95 @@ def update_github_jsonl(new_data):
 
 
 def setup_webdriver():
-    """
-    Render.com 환경에 맞는 웹드라이버 설정을 생성
-    """
+    """Render.com 환경에 맞는 웹드라이버 설정"""
     try:
-        # 방법 1: 기본 설정으로 ChromeDriverManager 사용
-        return webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
+        driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
+        return driver
     except Exception as e:
-        print(f"기본 방법 실패: {str(e)}")
+        print(f"ChromeDriverManager 설치 실패: {str(e)}")
         try:
-            # 방법 2: Service 객체 없이 직접 실행
-            return webdriver.Chrome(options=chrome_options)
+            # 직접 Chrome 실행 시도
+            driver = webdriver.Chrome(options=chrome_options)
+            return driver
         except Exception as e:
-            print(f"방법 2 실패: {str(e)}")
-            try:
-                # 방법 3: 환경 변수로 직접 경로 지정
-                chrome_driver_path = os.environ.get("CHROMEDRIVER_PATH", "/usr/bin/chromedriver")
-                return webdriver.Chrome(service=Service(chrome_driver_path), options=chrome_options)
-            except Exception as e:
-                print(f"모든 Webdriver 설정 방법 실패: {str(e)}")
-                sys.exit(1)
+            print(f"직접 Chrome 실행 실패: {str(e)}")
+            sys.exit(1)
+
+
+def scroll_page(driver, num_scrolls=3):
+    """페이지를 스크롤하여 더 많은 콘텐츠 로드"""
+    # 함수는 유지하되 실제 동작 없음 (호환성 유지)
+    pass
 
 
 def main():
-    # 스크래핑 시작 시각 (서울 시간 기준, 년월일시분 형식)
-    seoul_timezone = datetime.timezone(datetime.timedelta(hours=9))  # UTC+9 (한국 시간)
+    # 서울 시간 기준 스크래핑 시작 시각
+    seoul_timezone = datetime.timezone(datetime.timedelta(hours=9))
     scraping_time = datetime.datetime.now(seoul_timezone).strftime("%Y%m%d%H%M")
-    print(f"스크래핑 시작 시각 (서울): {datetime.datetime.now(seoul_timezone).strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"스크래핑 시작 (서울 시간): {datetime.datetime.now(seoul_timezone).strftime('%Y-%m-%d %H:%M:%S')}")
+    
+    driver = setup_webdriver()
     new_videos_data = []
     
-    print(f"Chrome 바이너리 경로: {chrome_binary or '찾지 못함'}")
-    
     try:
-        # 웹드라이버 설정
-        driver = setup_webdriver()
-        
-        # 모든 채널 처리
         for channel_info in channels:
             channel_name = channel_info["channel"]
             channel_url = channel_info["channel_url"]
             
             try:
-                print(f"\n==== {channel_name} 처리 시작 ====")
-                # 채널별로 새 드라이버 세션 사용
+                print(f"\n{channel_name} 처리 중...")
+                
+                # 채널별 새 드라이버 세션 시작 (안정성 향상)
                 driver.quit()
                 driver = setup_webdriver()
                 
-                # 페이지 로드
-                print(f"{channel_url} 로딩 중...")
+                # 페이지 로드만 실행
                 driver.get(channel_url)
-                time.sleep(5)  # 로딩 대기 시간 증가
+                time.sleep(3)
                 
-                # 페이지 로드 확인
-                page_title = driver.title
-                print(f"페이지 제목: {page_title}")
-                
-                # JavaScript 실행으로 페이지 완전 로드 확인
-                is_loaded = driver.execute_script("return document.readyState") == "complete"
-                print(f"페이지 로드 상태: {'완료' if is_loaded else '미완료'}")
-                
-                # YouTube 페이지 렌더링 대기 (더 많은 스크롤)
-                for i in range(5):
-                    driver.execute_script(f"window.scrollBy(0, {500 * (i+1)})")
-                    time.sleep(1)
-                
-                # 여러 가능한 CSS 선택자 시도
-                selectors = [
-                    "ytd-grid-video-renderer, ytd-rich-item-renderer",
-                    "ytd-grid-video-renderer", 
-                    "ytd-rich-item-renderer",
-                    "#contents ytd-rich-item-renderer",
-                    "#contents > ytd-rich-item-renderer",
-                    "ytd-rich-grid-media"
-                ]
-                
+                # 비디오 요소 찾기 (여러 선택자 시도)
                 videos = []
+                selectors = ["ytd-grid-video-renderer", "ytd-rich-item-renderer"]
+                
                 for selector in selectors:
                     try:
-                        elements = driver.find_elements(By.CSS_SELECTOR, selector)
-                        if elements:
-                            videos = elements[:MAX_VIDEOS_PER_CHANNEL]
+                        found_videos = driver.find_elements(By.CSS_SELECTOR, selector)
+                        if found_videos:
+                            videos = found_videos[:MAX_VIDEOS_PER_CHANNEL]
                             print(f"{selector} 선택자로 {len(videos)}개 비디오 발견")
                             break
-                    except Exception as e:
-                        print(f"{selector} 선택자 시도 실패: {str(e)}")
+                    except:
+                        continue
                 
                 if not videos:
-                    print(f"주의: {channel_name}에서 비디오를 찾지 못했습니다!")
-                    # 전체 페이지 HTML 일부 출력 (디버깅용)
-                    page_source = driver.page_source[:500]
-                    print(f"페이지 소스 일부: {page_source}")
+                    print(f"{channel_name}: 비디오를 찾을 수 없습니다.")
                     continue
                 
-                for i, video in enumerate(videos):
+                # 각 비디오에서 제목과 URL 추출
+                for video in videos:
                     try:
-                        print(f"\n비디오 {i+1} 처리 중...")
-                        
-                        # 제목 찾기 (여러 선택자 시도)
+                        # 제목 찾기
                         title = None
-                        title_selectors = ["#video-title", "#title-wrapper", "h3", "a[title]"]
-                        for title_selector in title_selectors:
-                            try:
-                                title_element = video.find_element(By.CSS_SELECTOR, title_selector)
-                                title = title_element.text or title_element.get_attribute("title")
-                                if title:
-                                    print(f"제목 찾음: {title[:50]}...")
-                                    break
-                            except:
-                                continue
+                        try:
+                            title_element = video.find_element(By.CSS_SELECTOR, "#video-title")
+                            title = title_element.text.strip() or title_element.get_attribute("title")
+                        except:
+                            pass
                         
-                        # URL 찾기 (여러 선택자 시도)
+                        # URL 찾기
                         video_url = None
-                        url_selectors = ["a#thumbnail", "a[href*='watch']", "a"]
-                        for url_selector in url_selectors:
+                        try:
+                            link_element = video.find_element(By.CSS_SELECTOR, "a#thumbnail")
+                            video_url = link_element.get_attribute("href")
+                        except:
                             try:
-                                link_element = video.find_element(By.CSS_SELECTOR, url_selector)
+                                link_element = video.find_element(By.CSS_SELECTOR, "#video-title")
                                 video_url = link_element.get_attribute("href")
-                                if video_url and "youtube.com/watch" in video_url:
-                                    print(f"URL 찾음: {video_url}")
-                                    break
                             except:
-                                continue
+                                pass
                         
-                        if title and video_url:
+                        # 데이터 저장
+                        if title and video_url and "youtube.com/watch" in video_url:
                             new_videos_data.append({
                                 "channel": channel_name,
                                 "channel_url": channel_url,
@@ -293,32 +251,40 @@ def main():
                                 "video_url": video_url,
                                 "scraping_time": scraping_time
                             })
-                            print(f"비디오 추가됨: {title[:30]}...")
-                        else:
-                            print(f"비디오 정보가 불완전함: 제목={bool(title)}, URL={bool(video_url)}")
+                            print(f"비디오 추가: {title[:30]}...")
                     except Exception as e:
                         print(f"비디오 파싱 오류: {str(e)}")
-                        continue
                 
-                # 채널간 간격 늘림
-                time.sleep(random.uniform(2, 3))
-                print(f"==== {channel_name} 처리 완료 ====")
+                # 채널간 지연시간
+                time.sleep(random.uniform(1, 2))
+            
             except Exception as e:
-                print(f"{channel_name} 처리 중 오류 발생: {str(e)}")
-                traceback.print_exc()
+                print(f"{channel_name} 처리 중 오류: {str(e)}")
                 continue
+    
     except Exception as e:
         print(f"스크래핑 중 오류 발생: {str(e)}")
-        traceback.print_exc()
+    
     finally:
         try:
             driver.quit()
         except:
             pass
-
-    print(f"총 {len(new_videos_data)}개 비디오 데이터 수집 완료")
-    update_result = update_github_jsonl(new_videos_data)
-    print(f"GitHub 업데이트 {'성공' if update_result else '실패'}")
+    
+    # 수집 결과 출력 및 GitHub 업데이트
+    print(f"\n총 {len(new_videos_data)}개 비디오 수집 완료")
+    
+    # 채널별 수집 비디오 수
+    channel_counts = {}
+    for item in new_videos_data:
+        channel = item["channel"]
+        channel_counts[channel] = channel_counts.get(channel, 0) + 1
+    
+    print("\n채널별 수집 비디오 수:")
+    for channel, count in channel_counts.items():
+        print(f"- {channel}: {count}개")
+    
+    update_github_jsonl(new_videos_data)
 
 
 if __name__ == "__main__":
