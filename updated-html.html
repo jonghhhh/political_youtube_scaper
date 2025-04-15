@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>정치/시사 유튜브 20개 채널의 최근 콘텐츠</title>
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+    }
+    /* 상단 오른쪽에 수집 시각 표시 */
+    #scrape-time {
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      font-size: 1em;
+      background: rgba(255, 255, 255, 0.8);
+      padding: 5px 10px;
+      border-radius: 4px;
+      box-shadow: 1px 1px 3px rgba(0,0,0,0.2);
+      z-index: 100;
+    }
+    .container {
+      display: flex;
+      gap: 20px;
+      padding: 20px;
+      box-sizing: border-box;
+      min-height: 80vh;
+    }
+    /* 왼쪽: 하위 10개 채널 (약한 파란색 배경) */
+    #left-column {
+      flex: 1;
+      background-color: #add8e6;
+      padding: 10px;
+      box-sizing: border-box;
+      min-height: 600px;
+    }
+    /* 오른쪽: 상위 10개 채널 (약한 빨간색 배경) */
+    #right-column {
+      flex: 1;
+      background-color: #ffc0cb;
+      padding: 10px;
+      box-sizing: border-box;
+      min-height: 600px;
+    }
+    .channel {
+      margin-bottom: 20px;
+      border-bottom: 1px solid #ccc;
+      padding-bottom: 10px;
+    }
+    .channel h2 {
+      margin: 0 0 5px;
+      font-size: 1.1em;
+    }
+    .videos a {
+      display: block;
+      margin-bottom: 3px;
+      text-decoration: none;
+      color: #000;
+      font-size: 0.95em;
+    }
+    /* 비디오 정보(길이, 조회수) 스타일 */
+    .video-info {
+      font-size: 0.85em;
+      color: #555;
+      margin-left: 5px;
+    }
+    h1.page-title {
+                    text-align: center;
+                    font-size: 24px;
+                    margin: 20px 0;
+                    font-weight: bold;
+                }
+    h3 {
+        font-size: 18px;
+        margin: 15px 0;
+        color: #333;
+        font-weight: bold;
+        border-bottom: 1px solid #ddd;
+        padding-bottom: 5px;
+    }
+  </style>
+</head>
+<body>
+  <h1 class="page-title">정치/시사 유튜브 20개 채널의 최근 콘텐츠</h1>
+  <!-- 수집 시각 표시 영역 -->
+  <div id="scrape-time">수집 시각: -</div>
+
+  <div class="container">
+    <!-- 왼쪽: 하위 10개 채널 -->
+    <div id="left-column">
+      <h3>진보 유튜브 채널</h3>
+    </div>
+    <!-- 오른쪽: 상위 10개 채널 -->
+    <div id="right-column">
+      <h3>보수 유튜브 채널</h3>
+    </div>
+  </div>
+
+  <script>
+    // scraping_time 값을 형식화하는 함수
+    function formatScrapeTime(timeStr) {
+      if (timeStr && timeStr.length >= 19) { // "YYYY-MM-DD HH:MM:SS" 형식 가정
+        const parts = timeStr.split(" ");
+        if (parts.length >= 2) {
+          const dateParts = parts[0].split("-");
+          const timeParts = parts[1].split(":");
+          
+          if (dateParts.length === 3 && timeParts.length >= 2) {
+            return `${dateParts[0]}년 ${dateParts[1]}월 ${dateParts[2]}일 ${timeParts[0]}시 ${timeParts[1]}분`;
+          }
+        }
+      }
+      return timeStr;
+    }
+
+    // 스크래핑 시 사용한 채널 순서
+    const channelsOrder = [
+      "성창경TV",
+      "이봉규TV",
+      "신의한수",
+      "고성국TV",
+      "배승희_변호사",
+      "펜앤마이크TV",
+      "서정욱TV",
+      "신인균의_국방TV",
+      "[정광용TV]레지스탕스TV",
+      "최병묵의_FACT",
+      "김어준의_겸손은힘들다_뉴스공장",
+      "[팟빵]매불쇼",
+      "스픽스",
+      "[공식]새날",
+      "장윤선의_취재편의점",
+      "백운기의_정어리TV",
+      "언론_알아야_바꾼다",
+      "사장남천동",
+      "김용민TV",
+      "정치파랑새"
+    ];
+
+    const channelVideos = {};
+    let latestScrapeTime = "";
+
+    fetch('youtube_videos.jsonl')
+      .then(response => response.text())
+      .then(text => {
+        const lines = text.trim().split('\n');
+        lines.forEach(line => {
+          try {
+            const data = JSON.parse(line);
+            if (data.scraping_time && data.scraping_time > latestScrapeTime) {
+              latestScrapeTime = data.scraping_time;
+            }
+            const chName = data.channel;
+            if (!channelVideos[chName]) {
+              channelVideos[chName] = [];
+            }
+            channelVideos[chName].push(data);
+          } catch(e) {
+            console.error('파싱 오류:', e);
+          }
+        });
+
+        // 최신 scraping_time을 지정한 포맷으로 변환하여 표시
+        document.getElementById("scrape-time").innerText = "수집 시각: " + (latestScrapeTime ? formatScrapeTime(latestScrapeTime) : "-");
+
+        // 각 채널별로 파일 내 위치 순서대로 정렬 (최근 추가된 것이 맨 뒤에 있다고 가정)
+        Object.keys(channelVideos).forEach(chName => {
+          // 일단 원래 순서를 유지 (파일에서 읽어들인 순서가 추가된 순서)
+          // 가장 최근 5개 선택 (파일의 가장 아래쪽에 있는 데이터)
+          channelVideos[chName] = channelVideos[chName].slice(-5);
+        });
+
+        const leftColumn = document.getElementById('left-column');
+        const rightColumn = document.getElementById('right-column');
+
+        // 오른쪽: 상위 10개 채널 (인덱스 0~9)
+        for (let i = 0; i < 10; i++) {
+          const chName = channelsOrder[i];
+          const channelDiv = document.createElement('div');
+          channelDiv.className = 'channel';
+          const title = document.createElement('h2');
+          title.textContent = chName;
+          channelDiv.appendChild(title);
+
+          const videosDiv = document.createElement('div');
+          videosDiv.className = 'videos';
+
+          if (channelVideos[chName]) {
+            channelVideos[chName].forEach(video => {
+              const container = document.createElement('div');
+              
+              const link = document.createElement('a');
+              link.href = video.video_url;
+              link.textContent = video.title || video.video_title;
+              link.target = '_blank';
+              container.appendChild(link);
+              
+              // 길이와 조회수 정보 추가
+              if (video.length || video.views) {
+                const infoSpan = document.createElement('span');
+                infoSpan.className = 'video-info';
+                infoSpan.textContent = `(${video.length || '?'}, ${video.views || '?'})`;
+                container.appendChild(infoSpan);
+              }
+              
+              videosDiv.appendChild(container);
+            });
+          }
+
+          channelDiv.appendChild(videosDiv);
+          rightColumn.appendChild(channelDiv);
+        }
+
+        // 왼쪽: 하위 10개 채널 (인덱스 10~19)
+        for (let i = 10; i < 20; i++) {
+          const chName = channelsOrder[i];
+          const channelDiv = document.createElement('div');
+          channelDiv.className = 'channel';
+          const title = document.createElement('h2');
+          title.textContent = chName;
+          channelDiv.appendChild(title);
+
+          const videosDiv = document.createElement('div');
+          videosDiv.className = 'videos';
+
+          if (channelVideos[chName]) {
+            channelVideos[chName].forEach(video => {
+              const container = document.createElement('div');
+              
+              const link = document.createElement('a');
+              link.href = video.video_url;
+              link.textContent = video.title || video.video_title;
+              link.target = '_blank';
+              container.appendChild(link);
+              
+              // 길이와 조회수 정보 추가
+              if (video.length || video.views) {
+                const infoSpan = document.createElement('span');
+                infoSpan.className = 'video-info';
+                infoSpan.textContent = `(${video.length || '?'}, ${video.views || '?'})`;
+                container.appendChild(infoSpan);
+              }
+              
+              videosDiv.appendChild(container);
+            });
+          }
+
+          channelDiv.appendChild(videosDiv);
+          leftColumn.appendChild(channelDiv);
+        }
+      })
+      .catch(error => {
+        console.error('파일 로드 에러:', error);
+      });
+  </script>
+</body>
+</html>
