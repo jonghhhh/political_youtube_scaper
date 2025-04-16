@@ -164,12 +164,13 @@
 
         // 최신 scraping_time을 지정한 포맷으로 변환하여 표시
         document.getElementById("scrape-time").innerText = "수집 시각: " + (latestScrapeTime ? formatScrapeTime(latestScrapeTime) : "-");
-
+        
         // 각 채널별로 파일 내 위치 순서대로 정렬 (최근 추가된 것이 맨 뒤에 있다고 가정)
         Object.keys(channelVideos).forEach(chName => {
-          // 일단 원래 순서를 유지 (파일에서 읽어들인 순서가 추가된 순서)
           // 가장 최근 5개 선택 (파일의 가장 아래쪽에 있는 데이터)
           channelVideos[chName] = channelVideos[chName].slice(-5);
+          // 역순으로 정렬 (최신 데이터가 맨 위에 표시되도록)
+          channelVideos[chName].reverse();
         });
 
         const leftColumn = document.getElementById('left-column');
