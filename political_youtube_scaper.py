@@ -267,7 +267,7 @@ def convert_to_jsonl(data_list):
 def update_github_jsonl(new_data):
     """
     GitHub 저장소의 JSONL 파일을 불러와 기존 데이터와 새 데이터를 결합한 후,
-    video_url이 중복되는 경우 scraping_time 기준 최신 데이터만 남기고 업데이트.
+    중복 체크 없이 모든 데이터를 저장합니다.
     """
     if not new_data:
         print("새로운 데이터가 없습니다. GitHub 업데이트를 건너뜁니다.")
@@ -293,20 +293,10 @@ def update_github_jsonl(new_data):
         
         print(f"GitHub에서 {len(existing_data)}개의 기존 데이터를 불러왔습니다.")
         
+        # 중복 체크 없이 모든 데이터를 결합
         combined_data = existing_data + new_data
 
-        # video_url 기준 deduplication (최신 scraping_time 데이터만 남김)
-        deduped_records = {}
-        for record in combined_data:
-            url = record.get("video_url", "")
-            if url:
-                existing_time = deduped_records.get(url, {}).get("scraping_time", "")
-                current_time = record.get("scraping_time", "")
-                
-                if (url not in deduped_records) or (current_time > existing_time):
-                    deduped_records[url] = record
-
-        jsonl_content = convert_to_jsonl(list(deduped_records.values()))
+        jsonl_content = convert_to_jsonl(combined_data)
         commit_message = f"Update videos data at {seoul_time.strftime('%Y-%m-%d %H:%M:%S')} KST"
         
         if sha:
@@ -314,7 +304,7 @@ def update_github_jsonl(new_data):
         else:
             repo.create_file(file_path, commit_message, jsonl_content)
             
-        print(f"GitHub 업데이트 완료: {len(new_data)}개 항목 추가, 총 {len(deduped_records)}개 항목 유지됨")
+        print(f"GitHub 업데이트 완료: {len(new_data)}개 항목 추가, 총 {len(combined_data)}개 항목 유지됨")
         return True
     except Exception as e:
         print(f"GitHub 업데이트 실패: {str(e)}")
